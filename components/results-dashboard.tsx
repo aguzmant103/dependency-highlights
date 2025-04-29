@@ -1,6 +1,6 @@
 "use client"
 
-import { GitFork, Star, ArrowUpRight, Filter } from "lucide-react"
+import { GitFork, Star, ArrowUpRight, Filter, ArrowUpDown } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { fetchDependentProjects } from "@/lib/github"
@@ -38,6 +38,14 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
     total: initialData?.totalPackages || 0
   });
   const { ref, inView } = useInView();
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof DependentProject | null;
+    direction: 'asc' | 'desc' | null;
+  }>({
+    key: null,
+    direction: null
+  });
+  const [packages, setPackages] = useState<string[]>([]);
 
   // Update state when initialData changes
   useEffect(() => {
@@ -52,6 +60,22 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
       });
     }
   }, [initialData]);
+
+  // Subscribe to progress updates to capture all packages
+  useEffect(() => {
+    const originalConsoleLog = console.log;
+    console.log = (...args) => {
+      const message = args.join(" ");
+      if (message.includes("Found package:")) {
+        const packageName = message.split("Found package: ")[1];
+        setPackages(prev => [...new Set([...prev, packageName])]);
+      }
+      originalConsoleLog.apply(console, args);
+    };
+    return () => {
+      console.log = originalConsoleLog;
+    };
+  }, []);
 
   const loadMoreProjects = useCallback(async () => {
     if (isLoading || !hasNextPage || isPartialResult) {
@@ -94,6 +118,74 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
     }
   }, [inView, loadMoreProjects]);
 
+  // Sort projects based on current sort configuration
+  const sortedProjects = [...projects].sort((a, b) => {
+    if (!sortConfig.key || !sortConfig.direction) return 0;
+    
+    const aValue = a[sortConfig.key];
+    const bValue = b[sortConfig.key];
+    
+    if (sortConfig.key === 'lastCommit') {
+      // Parse dates for lastCommit comparison
+      const aStr = typeof aValue === 'string' ? aValue : 'Unknown';
+      const bStr = typeof bValue === 'string' ? bValue : 'Unknown';
+      const aDate = aStr === 'Unknown' ? new Date(0) : new Date(aStr);
+      const bDate = bStr === 'Unknown' ? new Date(0) : new Date(bStr);
+      return sortConfig.direction === 'asc' 
+        ? aDate.getTime() - bDate.getTime()
+        : bDate.getTime() - aDate.getTime();
+    }
+    
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      // Handle null/undefined values for numeric comparisons
+      const aNum = aValue || 0;
+      const bNum = bValue || 0;
+      return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
+    }
+    
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortConfig.direction === 'asc'
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+    
+    if (typeof aValue === 'boolean' && typeof bValue === 'boolean') {
+      return sortConfig.direction === 'asc'
+        ? (aValue === bValue ? 0 : aValue ? 1 : -1)
+        : (aValue === bValue ? 0 : aValue ? -1 : 1);
+    }
+    
+    return 0;
+  });
+
+  const handleSort = (key: keyof DependentProject) => {
+    setSortConfig(current => ({
+      key,
+      direction: 
+        current.key === key 
+          ? current.direction === 'asc' 
+            ? 'desc' 
+            : current.direction === 'desc' 
+              ? null 
+              : 'asc'
+          : 'asc'
+    }));
+  };
+
+  // Helper function to render sort indicator
+  const getSortIndicator = (columnKey: keyof DependentProject) => {
+    if (sortConfig.key !== columnKey) {
+      return <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <ArrowUpDown className="h-3.5 w-3.5 text-solv-purple" />;
+    }
+    if (sortConfig.direction === 'desc') {
+      return <ArrowUpDown className="h-3.5 w-3.5 text-solv-purple rotate-180" />;
+    }
+    return <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />;
+  };
+
   if (projects.length === 0) {
     console.log("ℹ️ No projects found");
     return (
@@ -123,7 +215,7 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
       {((progress.processed < progress.total) || isPartialResult) && (
         <Card className="bg-solv-card border-solv-purple/20">
           <CardContent className="p-6">
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">Scanning Dependencies</div>
                 <div className="text-sm text-muted-foreground">
@@ -138,8 +230,23 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
                   }}
                 />
               </div>
+              {/* Package List */}
+              <div className="border-t border-solv-purple/10 pt-4">
+                <div className="text-xs text-muted-foreground mb-3">Identified Packages:</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {packages.map(packageName => (
+                    <div 
+                      key={packageName}
+                      className="text-xs flex items-center gap-2 bg-solv-purple/5 px-2 py-1.5 rounded"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-solv-purple/50" />
+                      <code className="font-mono text-solv-lightPurple">{packageName}</code>
+                    </div>
+                  ))}
+                </div>
+              </div>
               {isPartialResult && (
-                <p className="text-xs text-yellow-400">
+                <p className="text-xs text-yellow-400 border-t border-solv-purple/10 pt-4">
                   Rate limit reached - showing partial results
                 </p>
               )}
@@ -220,17 +327,77 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
             <thead>
               <tr className="border-b border-solv-purple/20 bg-solv-background/50">
                 <th className="text-left p-4 text-xs font-medium text-muted-foreground">#</th>
-                <th className="text-left p-4 text-xs font-medium text-muted-foreground">Project Name</th>
-                <th className="text-left p-4 text-xs font-medium text-muted-foreground">Package</th>
-                <th className="text-left p-4 text-xs font-medium text-muted-foreground">Stars</th>
-                <th className="text-left p-4 text-xs font-medium text-muted-foreground">Forks</th>
-                <th className="text-left p-4 text-xs font-medium text-muted-foreground">Last Commit</th>
-                <th className="text-left p-4 text-xs font-medium text-muted-foreground">Status</th>
+                <th>
+                  <button 
+                    onClick={() => handleSort('name')}
+                    className="w-full text-left p-4 text-xs font-medium text-muted-foreground hover:text-solv-lightPurple flex items-center gap-1 group"
+                  >
+                    Project Name
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      {getSortIndicator('name')}
+                    </span>
+                  </button>
+                </th>
+                <th>
+                  <button 
+                    onClick={() => handleSort('package')}
+                    className="w-full text-left p-4 text-xs font-medium text-muted-foreground hover:text-solv-lightPurple flex items-center gap-1 group"
+                  >
+                    Package
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      {getSortIndicator('package')}
+                    </span>
+                  </button>
+                </th>
+                <th>
+                  <button 
+                    onClick={() => handleSort('stars')}
+                    className="w-full text-left p-4 text-xs font-medium text-muted-foreground hover:text-solv-lightPurple flex items-center gap-1 group"
+                  >
+                    Stars
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      {getSortIndicator('stars')}
+                    </span>
+                  </button>
+                </th>
+                <th>
+                  <button 
+                    onClick={() => handleSort('forks')}
+                    className="w-full text-left p-4 text-xs font-medium text-muted-foreground hover:text-solv-lightPurple flex items-center gap-1 group"
+                  >
+                    Forks
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      {getSortIndicator('forks')}
+                    </span>
+                  </button>
+                </th>
+                <th>
+                  <button 
+                    onClick={() => handleSort('lastCommit')}
+                    className="w-full text-left p-4 text-xs font-medium text-muted-foreground hover:text-solv-lightPurple flex items-center gap-1 group"
+                  >
+                    Last Commit
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      {getSortIndicator('lastCommit')}
+                    </span>
+                  </button>
+                </th>
+                <th>
+                  <button 
+                    onClick={() => handleSort('isActive')}
+                    className="w-full text-left p-4 text-xs font-medium text-muted-foreground hover:text-solv-lightPurple flex items-center gap-1 group"
+                  >
+                    Status
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      {getSortIndicator('isActive')}
+                    </span>
+                  </button>
+                </th>
                 <th className="text-right p-4 text-xs font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {projects.map((project, index) => (
+              {sortedProjects.map((project, index) => (
                 <tr
                   key={project.id}
                   className={`border-b border-solv-purple/10 hover:bg-solv-purple/5 ${

@@ -277,7 +277,7 @@ export async function fetchDependentProjects(
                     stars: repo.stargazers_count,
                     forks: repo.forks_count,
                     lastCommit: lastCommitDate
-                      ? new Date(lastCommitDate).toLocaleDateString()
+                      ? new Date(lastCommitDate).toISOString().split('T')[0].replace(/-/g, '/')
                       : "Unknown",
                     isActive: monthsInactive < 6,
                     url: repo.html_url,

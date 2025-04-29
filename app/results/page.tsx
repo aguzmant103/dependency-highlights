@@ -2,7 +2,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ResultsDashboard } from "@/components/results-dashboard"
-import { ResultsLoading } from "@/components/results-loading"
+import { CLILoading } from "@/components/cli-loading"
 import { Sidebar } from "@/components/sidebar"
 import { ArrowLeftIcon } from "@radix-ui/react-icons"
 import { fetchDependentProjects } from "@/lib/github"
@@ -72,7 +72,7 @@ export default async function ResultsPage({ searchParams }: PageProps) {
             </p>
           </div>
 
-          <Suspense fallback={<ResultsLoading />}>
+          <Suspense fallback={<CLILoading owner={owner} repo={repo} />}>
             <ResultsDashboard owner={owner} repo={repo} initialData={initialData} />
           </Suspense>
         </div>
