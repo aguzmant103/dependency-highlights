@@ -5,12 +5,21 @@ import { ResultsDashboard } from "@/components/results-dashboard"
 import { ResultsLoading } from "@/components/results-loading"
 import { Sidebar } from "@/components/sidebar"
 import { ArrowLeftIcon } from "@radix-ui/react-icons"
+import { Metadata } from "next"
 
-export default async function ResultsPage({ searchParams }: { searchParams: Record<string, string> }) {
-  // Await searchParams if it's a Promise (per Next.js latest API)
-  const params = typeof searchParams.then === "function" ? await searchParams : searchParams
-  const owner = params.owner || ""
-  const repo = params.repo || ""
+export const metadata: Metadata = {
+  title: "Dependency Results",
+  description: "View projects that depend on a specific repository",
+}
+
+type PageProps = {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function ResultsPage({ searchParams }: PageProps) {
+  const resolvedSearchParams = await searchParams
+  const owner = typeof resolvedSearchParams.owner === "string" ? resolvedSearchParams.owner : ""
+  const repo = typeof resolvedSearchParams.repo === "string" ? resolvedSearchParams.repo : ""
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -30,7 +39,7 @@ export default async function ResultsPage({ searchParams }: { searchParams: Reco
 
           <div className="mb-8">
             <h1 className="text-2xl font-bold tracking-tighter mb-2 text-solv-lightPurple">
-              Projects Depending on{" "}
+              Projects Depending on {" "}
               <span className="inline-block bg-white/10 border border-white/20 rounded-lg px-3 py-1 text-white shadow-md animate-fade-in">
                 {owner}/{repo}
               </span>

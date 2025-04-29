@@ -17,7 +17,7 @@ export function Hero() {
           </div>
           <div className="flex flex-col gap-2 min-[400px]:flex-row">
             <Link href="#search">
-              <Button size="lg" className="gap-1.5 bg-white text-solv-purple hover:bg-solv-lightPurple hover:text-white">
+              <Button size="lg" className="gap-1.5 bg-solv-purple text-white hover:bg-solv-accent">
                 Get Started <ArrowRightIcon className="h-4 w-4" />
               </Button>
             </Link>
