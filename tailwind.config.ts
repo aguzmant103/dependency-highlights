@@ -1,13 +1,13 @@
-import type { Config } from 'tailwindcss'
-import animate from "tailwindcss-animate"
+import type { Config } from "tailwindcss"
 
-const config: Config = {
+const config = {
   darkMode: ["class"],
   content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+    "*.{js,ts,jsx,tsx,mdx}",
   ],
   prefix: "",
   theme: {
@@ -45,13 +45,21 @@ const config: Config = {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+        solv: {
+          purple: "#8A2BE2",
+          darkPurple: "#4B0082",
+          lightPurple: "#9370DB",
+          background: "#1A0033",
+          card: "#25004D",
+          accent: "#A020F0",
         },
       },
       borderRadius: {
@@ -75,7 +83,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [animate],
-}
+  plugins: [require("tailwindcss-animate")],
+} satisfies Config
 
 export default config
