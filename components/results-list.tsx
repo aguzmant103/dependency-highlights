@@ -9,9 +9,9 @@ import { CalendarIcon } from "@radix-ui/react-icons"
 export async function ResultsList({ owner, repo }: { owner: string; repo: string }) {
   // In a real implementation, this would call the GitHub API
   // For this example, we'll use mock data
-  const projects = await fetchDependentProjects(owner, repo)
+  const response = await fetchDependentProjects(owner, repo)
 
-  if (projects.length === 0) {
+  if (response.data.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <h2 className="text-2xl font-bold mb-2">No dependent projects found</h2>
@@ -27,7 +27,7 @@ export async function ResultsList({ owner, repo }: { owner: string; repo: string
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {projects.map((project) => (
+      {response.data.map((project) => (
         <Card key={project.id} className={project.isActive ? "border-green-500 border-2" : ""}>
           <CardHeader className="pb-2">
             <div className="flex justify-between items-start">

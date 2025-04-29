@@ -5,9 +5,11 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Github } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { parseRepoUrl } from "@/lib/github"
+import { toast } from "sonner"
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
 
 export function SearchForm() {
@@ -17,38 +19,17 @@ export function SearchForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!repoUrl) return
-
     setIsLoading(true)
 
-    // Extract owner and repo from URL
-    let owner = ""
-    let repo = ""
-
     try {
-      const url = new URL(repoUrl)
-      if (url.hostname === "github.com") {
-        const pathParts = url.pathname.split("/").filter(Boolean)
-        if (pathParts.length >= 2) {
-          owner = pathParts[0]
-          repo = pathParts[1]
-        }
-      }
-    } catch {
-      // Handle if it's not a URL but a owner/repo format
-      const parts = repoUrl.split("/").filter(Boolean)
-      if (parts.length >= 2) {
-        owner = parts[0]
-        repo = parts[1]
-      }
-    }
-
-    if (owner && repo) {
+      const { owner, repo } = parseRepoUrl(repoUrl.trim())
       router.push(`/results?owner=${owner}&repo=${repo}`)
-    } else {
-      // Handle invalid input
-      alert("Please enter a valid GitHub repository URL or owner/repo format")
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Invalid repository format. Please use 'owner/repo' or GitHub URL."
+      )
       setIsLoading(false)
     }
   }
