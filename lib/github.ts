@@ -1,5 +1,6 @@
-import { Octokit } from "@octokit/rest";
 import { z } from "zod";
+import { githubRateLimiter } from "./github-rate-limit";
+import { GitHubSearchResponse, GitHubSearchCodeItem, GitHubContent, GitHubCommit, GitHubRepository, PackageJson } from "./github-types";
 
 // Schema for repository validation
 const RepoUrlSchema = z.object({
@@ -27,97 +28,13 @@ export interface DependentProject {
   package: string; // Track which package this project depends on
 }
 
-// Initialize Octokit client
-const octokit = new Octokit({
-  auth: process.env.NEXT_PUBLIC_GITHUB_TOKEN || process.env.GITHUB_TOKEN,
-});
-
-// Add warning if no token is found
-if (!process.env.NEXT_PUBLIC_GITHUB_TOKEN && !process.env.GITHUB_TOKEN) {
-  console.warn("⚠️ No GitHub token found. API rate limits will be severely restricted and some features won't work.");
-}
-
-// Log initial setup
-console.log("🔑 GitHub API Client Setup:", {
-  hasToken: Boolean(process.env.NEXT_PUBLIC_GITHUB_TOKEN || process.env.GITHUB_TOKEN),
-  isPublicToken: Boolean(process.env.NEXT_PUBLIC_GITHUB_TOKEN),
-  isPrivateToken: Boolean(process.env.GITHUB_TOKEN)
-});
-
 // Constants for batch processing
 const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 2000;
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY = 1000;
 
 // Utility function for delay between batches
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Utility function for exponential backoff
-async function exponentialBackoff(retryCount: number) {
-  const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
-  await sleep(delay);
-}
-
-// Utility function to check remaining rate limit
-async function checkRateLimit(): Promise<boolean> {
-  try {
-    const { data: rateLimit } = await octokit.rateLimit.get();
-    const remaining = rateLimit.resources.search.remaining;
-    console.log(`ℹ️ GitHub API rate limit remaining: ${remaining}`);
-    return remaining > 0;
-  } catch (error) {
-    console.warn("⚠️ Failed to check rate limit:", error);
-    return true; // Assume we can continue if we can't check
-  }
-}
-
-// Schema for batch processing results
-export interface BatchProcessingResult {
-  data: DependentProject[];
-  hasNextPage: boolean;
-  isPartialResult: boolean;
-  error?: string;
-  processedPackages?: number;
-  totalPackages?: number;
-}
-
-// Types for GitHub API errors
-interface GitHubErrorResponse {
-  status: number;
-  message: string;
-  documentation_url?: string;
-}
-
-interface GitHubError extends Error {
-  status?: number;
-  response?: {
-    data?: GitHubErrorResponse;
-  };
-}
-
-// Utility function to check if error is a rate limit error
-function isRateLimitError(error: unknown): error is GitHubError {
-  return (
-    error instanceof Error &&
-    'status' in error &&
-    (error.status === 403 || error.status === 429)
-  );
-}
-
-// Utility function to format rate limit error message
-function formatRateLimitError(error: GitHubError): string {
-  const baseMessage = "GitHub API rate limit exceeded.";
-  const waitTime = "Please wait a few minutes and try again.";
-  const docsLink = "See https://docs.github.com/rest/rate-limit for more information.";
-  
-  if (error.response?.data?.documentation_url) {
-    return `${baseMessage} ${waitTime}\n${docsLink}`;
-  }
-  
-  return `${baseMessage} ${waitTime}`;
 }
 
 // Parse GitHub repository URL or owner/repo string
@@ -147,13 +64,15 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
   try {
     // First try to get package.json files from the repository
     console.log(`🔎 Searching for package.json files in ${owner}/${repo}`);
-    const { data: packageFiles } = await octokit.search.code({
-      q: `repo:${owner}/${repo} filename:package.json`,
-      per_page: 100,
-    });
+    const packageFiles = await githubRateLimiter.request('GET', '/search/code', {
+      params: {
+        q: `repo:${owner}/${repo} filename:package.json`,
+        per_page: 100,
+      }
+    }) as GitHubSearchResponse<GitHubSearchCodeItem>;
 
     console.log(`📦 Found ${packageFiles.items.length} potential package.json files:`, 
-      packageFiles.items.map(f => ({ path: f.path, url: f.html_url }))
+      packageFiles.items.map((f) => ({ path: f.path, url: f.html_url }))
     );
 
     const packages: Package[] = [];
@@ -162,14 +81,19 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
     for (const file of packageFiles.items) {
       try {
         console.log(`📄 Processing package.json at ${file.path}`);
-        const { data: content } = await octokit.repos.getContent({
-          owner,
-          repo,
-          path: file.path,
-        });
+        const content = await githubRateLimiter.request('GET', '/repos/{owner}/{repo}/contents/{path}', {
+          params: {
+            owner,
+            repo,
+            path: file.path
+          },
+          headers: {
+            accept: 'application/vnd.github.v3+json'
+          }
+        }) as GitHubContent;
 
         if ('content' in content) {
-          const packageJson = JSON.parse(Buffer.from(content.content, 'base64').toString());
+          const packageJson = JSON.parse(Buffer.from(content.content, 'base64').toString()) as PackageJson;
           console.log(`📝 Package.json content for ${file.path}:`, {
             name: packageJson.name,
             dependencies: Object.keys(packageJson.dependencies || {}),
@@ -210,6 +134,16 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
   }
 }
 
+// Schema for batch processing results
+export interface BatchProcessingResult {
+  data: DependentProject[];
+  hasNextPage: boolean;
+  isPartialResult: boolean;
+  error?: string;
+  processedPackages?: number;
+  totalPackages?: number;
+}
+
 // Fetch dependent repositories using GitHub API with batch processing
 export async function fetchDependentProjects(
   owner: string,
@@ -223,13 +157,16 @@ export async function fetchDependentProjects(
     
     // First, check if the repository exists
     console.log("📡 Checking if repository exists...");
-    try {
-      const repoCheck = await octokit.repos.get({ owner, repo });
-      console.log("✅ Repository found:", repoCheck.data.full_name);
-    } catch (error) {
-      console.error("❌ Repository check failed:", error);
-      throw error;
-    }
+    const repoCheck = await githubRateLimiter.request('GET', '/repos/{owner}/{repo}', {
+      params: {
+        owner,
+        repo
+      },
+      headers: {
+        accept: 'application/vnd.github.v3+json'
+      }
+    }) as GitHubRepository;
+    console.log("✅ Repository found:", repoCheck.full_name);
 
     // Discover packages in the repository
     const packages = await discoverPackages(owner, repo);
@@ -260,105 +197,79 @@ export async function fetchDependentProjects(
       console.log(`🔄 Processing batch ${i / BATCH_SIZE + 1} of ${Math.ceil(packages.length / BATCH_SIZE)}`);
 
       // Check rate limit before processing batch
-      const canContinue = await checkRateLimit();
+      const canContinue = await githubRateLimiter.hasRemainingRequests();
       if (!canContinue) {
         console.log("⚠️ Rate limit reached, stopping batch processing");
         isPartialResult = true;
-        batchError = formatRateLimitError({ status: 403 } as GitHubError);
-        emitProgress();
-        break;
+        batchError = "Rate limit exceeded. Please try again later.";
+        return emitProgress();
       }
 
       try {
         const batchPromises = batch.map(async (pkg) => {
           console.log(`🔎 Searching for dependents of package: ${pkg.name}`);
           
-          for (let retryCount = 0; retryCount < MAX_RETRIES; retryCount++) {
+          const response = await githubRateLimiter.request('GET', '/search/code', {
+            params: {
+              q: `"${pkg.name}": filename:package.json`,
+              per_page: perPage,
+              page,
+            }
+          }) as GitHubSearchResponse<GitHubSearchCodeItem>;
+
+          console.log(`📊 Found ${response.total_count} potential dependents for ${pkg.name}`);
+
+          // Process repositories for this package
+          const uniqueRepos = new Map();
+          for (const item of response.items) {
+            if (item.repository && !uniqueRepos.has(item.repository.node_id)) {
+              uniqueRepos.set(item.repository.node_id, item.repository);
+            }
+          }
+
+          // Process each unique repository
+          for (const repo of uniqueRepos.values()) {
             try {
-              const response = await octokit.search.code({
-                q: `"${pkg.name}":  filename:package.json`,
-                per_page: perPage,
-                page,
+              const commits = await githubRateLimiter.request('GET', '/repos/{owner}/{repo}/commits', {
+                params: {
+                  owner: repo.owner.login,
+                  repo: repo.name,
+                  per_page: 1
+                },
+                headers: {
+                  accept: 'application/vnd.github.v3+json'
+                }
+              }) as GitHubCommit[];
+
+              const lastCommitDate = commits[0]?.commit?.committer?.date;
+              const monthsInactive = lastCommitDate
+                ? Math.floor((Date.now() - new Date(lastCommitDate).getTime()) / (1000 * 60 * 60 * 24 * 30))
+                : 0;
+
+              allDependents.push({
+                id: repo.node_id,
+                name: repo.name,
+                description: repo.description,
+                stars: repo.stargazers_count,
+                forks: repo.forks_count,
+                lastCommit: lastCommitDate
+                  ? new Date(lastCommitDate).toISOString().split('T')[0].replace(/-/g, '/')
+                  : "Unknown",
+                isActive: monthsInactive < 6,
+                url: repo.html_url,
+                package: pkg.name,
               });
-
-              console.log(`📊 Found ${response.data.total_count} potential dependents for ${pkg.name}`);
-
-              // Process repositories for this package
-              const uniqueRepos = new Map();
-              for (const item of response.data.items) {
-                if (item.repository && !uniqueRepos.has(item.repository.node_id)) {
-                  uniqueRepos.set(item.repository.node_id, item.repository);
-                }
-              }
-
-              // Process each unique repository
-              for (const repo of uniqueRepos.values()) {
-                try {
-                  const commits = await octokit.repos.listCommits({
-                    owner: repo.owner.login,
-                    repo: repo.name,
-                    per_page: 1,
-                  });
-
-                  const lastCommitDate = commits.data[0]?.commit?.committer?.date;
-                  const monthsInactive = lastCommitDate
-                    ? Math.floor((Date.now() - new Date(lastCommitDate).getTime()) / (1000 * 60 * 60 * 24 * 30))
-                    : 0;
-
-                  allDependents.push({
-                    id: repo.node_id,
-                    name: repo.name,
-                    description: repo.description,
-                    stars: repo.stargazers_count,
-                    forks: repo.forks_count,
-                    lastCommit: lastCommitDate
-                      ? new Date(lastCommitDate).toISOString().split('T')[0].replace(/-/g, '/')
-                      : "Unknown",
-                    isActive: monthsInactive < 6,
-                    url: repo.html_url,
-                    package: pkg.name,
-                  });
-                  
-                  // Emit progress after each repository is processed
-                  emitProgress();
-                } catch (error) {
-                  console.warn(`⚠️ Error processing repository ${repo.full_name}:`, error);
-                }
-              }
-              break; // Success, exit retry loop
-            } catch (err) {
-              const error = err as GitHubError;
-              if (isRateLimitError(error)) {
-                if (retryCount < MAX_RETRIES - 1) {
-                  console.warn(`⚠️ Rate limit hit, attempt ${retryCount + 1}/${MAX_RETRIES}, backing off...`);
-                  await exponentialBackoff(retryCount);
-                  continue;
-                }
-                console.warn(`⚠️ Rate limit hit after ${MAX_RETRIES} retries`);
-                isPartialResult = true;
-                batchError = formatRateLimitError(error);
-                emitProgress();
-                break;
-              }
-              throw error;
+              
+              // Emit progress after each repository is processed
+              emitProgress();
+            } catch (error) {
+              console.warn(`⚠️ Error processing repository ${repo.full_name}:`, error);
             }
           }
         });
 
-        // Wait for all promises in the batch, even if some failed
-        const results = await Promise.allSettled(batchPromises);
-        
-        // Log any rejections but continue with the results we have
-        results.forEach((result, index) => {
-          if (result.status === 'rejected') {
-            console.warn(`⚠️ Failed to process package ${batch[index].name}:`, result.reason);
-          }
-        });
-
-        if (isPartialResult) {
-          console.log("⚠️ Stopping batch processing due to rate limits");
-          break;
-        }
+        // Wait for all promises in the batch
+        await Promise.all(batchPromises);
 
         // Add delay between batches if there are more to process
         if (i + BATCH_SIZE < packages.length) {
@@ -369,28 +280,18 @@ export async function fetchDependentProjects(
         console.error(`❌ Error processing batch:`, error);
         isPartialResult = true;
         batchError = error instanceof Error ? error.message : "Unknown batch error";
-        emitProgress();
-        break;
+        return emitProgress();
       }
     }
 
     return emitProgress();
-  } catch (err) {
-    const error = err as GitHubError;
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    
-    console.error("❌ Error fetching dependent projects:", {
-      error: isRateLimitError(error) ? formatRateLimitError(error) : errorMessage,
-      owner,
-      repo,
-      page,
-    });
-    
+  } catch (error) {
+    console.error("❌ Error fetching dependent projects:", error);
     return {
       data: [],
       hasNextPage: false,
       isPartialResult: true,
-      error: isRateLimitError(error) ? formatRateLimitError(error) : "Failed to fetch dependent projects"
+      error: error instanceof Error ? error.message : "Failed to fetch dependent projects"
     };
   }
 }

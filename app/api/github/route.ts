@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
-import { Octokit } from '@octokit/rest';
-
-// Initialize Octokit with server-side token
-const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
-});
+import { githubRateLimiter } from '@/lib/github-rate-limit';
+import { GitHubSearchCodeItem, PackageJson } from '@/lib/github-types';
 
 interface CacheEntry {
   data: unknown;
@@ -38,34 +34,51 @@ export async function GET(request: Request) {
       return NextResponse.json(cached.data);
     }
 
+    // Check rate limit before proceeding
+    const hasRemaining = await githubRateLimiter.hasRemainingRequests();
+    if (!hasRemaining) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     let data;
     switch (action) {
       case 'packages':
         // Get package.json files
-        const packageFiles = await octokit.search.code({
-          q: `repo:${owner}/${repo} filename:package.json path:/packages/`,
-          per_page: 100,
-        });
+        const packageFiles = await githubRateLimiter.request<'GET /search/code'>(
+          'GET',
+          '/search/code',
+          {
+            params: {
+              q: `repo:${owner}/${repo} filename:package.json path:/packages/`,
+              per_page: 100,
+            }
+          }
+        );
 
         // Get contents of each package.json
         const packages = await Promise.all(
-          packageFiles.data.items.map(async (file) => {
-            const content = await octokit.repos.getContent({
-              owner,
-              repo,
-              path: file.path,
-            });
+          packageFiles.items.map(async (file: GitHubSearchCodeItem) => {
+            const content = await githubRateLimiter.request<'GET /repos/{owner}/{repo}/contents/{path}'>(
+              'GET',
+              `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(file.path)}` as '/repos/{owner}/{repo}/contents/{path}',
+              {}
+            );
 
-            if ('content' in content.data) {
+            if ('content' in content) {
               const packageJson = JSON.parse(
-                Buffer.from(content.data.content, 'base64').toString()
-              );
-              return {
+                Buffer.from(content.content, 'base64').toString()
+              ) as PackageJson;
+              
+              return packageJson.name ? {
                 name: packageJson.name,
                 path: file.path,
-                type: 'npm',
-              };
+                type: 'npm' as const,
+              } : null;
             }
+            return null;
           })
         );
 
@@ -81,12 +94,18 @@ export async function GET(request: Request) {
           );
         }
 
-        const searchResults = await octokit.search.code({
-          q: `"${package_name}": filename:package.json`,
-          per_page: 100,
-        });
+        const searchResults = await githubRateLimiter.request<'GET /search/code'>(
+          'GET',
+          '/search/code',
+          {
+            params: {
+              q: `"${package_name}": filename:package.json`,
+              per_page: 100,
+            }
+          }
+        );
 
-        data = searchResults.data;
+        data = searchResults;
         break;
 
       default:
@@ -103,6 +122,15 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('GitHub API Error:', error);
     const err = error as { message?: string; status?: number };
+    
+    // Check if it's a rate limit error
+    if (err.status === 403 || err.status === 429) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
+    }
+    
     return NextResponse.json(
       { error: err.message || 'Internal server error' },
       { status: err.status || 500 }
