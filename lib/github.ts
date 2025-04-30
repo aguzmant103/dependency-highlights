@@ -37,6 +37,13 @@ if (!process.env.NEXT_PUBLIC_GITHUB_TOKEN && !process.env.GITHUB_TOKEN) {
   console.warn("⚠️ No GitHub token found. API rate limits will be severely restricted and some features won't work.");
 }
 
+// Log initial setup
+console.log("🔑 GitHub API Client Setup:", {
+  hasToken: Boolean(process.env.NEXT_PUBLIC_GITHUB_TOKEN || process.env.GITHUB_TOKEN),
+  isPublicToken: Boolean(process.env.NEXT_PUBLIC_GITHUB_TOKEN),
+  isPrivateToken: Boolean(process.env.GITHUB_TOKEN)
+});
+
 // Constants for batch processing
 const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 2000;
@@ -139,18 +146,22 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
   
   try {
     // First try to get package.json files from the repository
+    console.log(`🔎 Searching for package.json files in ${owner}/${repo}`);
     const { data: packageFiles } = await octokit.search.code({
-      q: `repo:${owner}/${repo} filename:package.json path:/packages/`,
+      q: `repo:${owner}/${repo} filename:package.json`,
       per_page: 100,
     });
 
-    console.log(`📦 Found ${packageFiles.items.length} potential package.json files`);
+    console.log(`📦 Found ${packageFiles.items.length} potential package.json files:`, 
+      packageFiles.items.map(f => ({ path: f.path, url: f.html_url }))
+    );
 
     const packages: Package[] = [];
 
     // Process each package.json file
     for (const file of packageFiles.items) {
       try {
+        console.log(`📄 Processing package.json at ${file.path}`);
         const { data: content } = await octokit.repos.getContent({
           owner,
           repo,
@@ -159,6 +170,12 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
 
         if ('content' in content) {
           const packageJson = JSON.parse(Buffer.from(content.content, 'base64').toString());
+          console.log(`📝 Package.json content for ${file.path}:`, {
+            name: packageJson.name,
+            dependencies: Object.keys(packageJson.dependencies || {}),
+            devDependencies: Object.keys(packageJson.devDependencies || {})
+          });
+          
           if (packageJson.name) {
             packages.push({
               name: packageJson.name,
@@ -166,6 +183,8 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
               type: 'npm'
             });
             console.log(`✅ Found package: ${packageJson.name}`);
+          } else {
+            console.log(`⚠️ No package name found in ${file.path}`);
           }
         }
       } catch (error) {
@@ -173,9 +192,20 @@ async function discoverPackages(owner: string, repo: string): Promise<Package[]>
       }
     }
 
+    console.log(`📦 Final packages discovered:`, packages);
     return packages;
   } catch (error) {
     console.error("❌ Error discovering packages:", error);
+    if (
+      error &&
+      typeof error === 'object' &&
+      'response' in error &&
+      error.response &&
+      typeof error.response === 'object' &&
+      'data' in error.response
+    ) {
+      console.error("API Error Details:", error.response.data);
+    }
     return [];
   }
 }
@@ -193,12 +223,17 @@ export async function fetchDependentProjects(
     
     // First, check if the repository exists
     console.log("📡 Checking if repository exists...");
-    const repoCheck = await octokit.repos.get({ owner, repo });
-    console.log("✅ Repository found:", repoCheck.data.full_name);
+    try {
+      const repoCheck = await octokit.repos.get({ owner, repo });
+      console.log("✅ Repository found:", repoCheck.data.full_name);
+    } catch (error) {
+      console.error("❌ Repository check failed:", error);
+      throw error;
+    }
 
     // Discover packages in the repository
     const packages = await discoverPackages(owner, repo);
-    console.log(`📦 Found ${packages.length} packages in repository`);
+    console.log(`📦 Found ${packages.length} packages in repository:`, packages);
 
     // Process packages in batches
     const allDependents: DependentProject[] = [];

@@ -46,6 +46,7 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
     direction: null
   });
   const [packages, setPackages] = useState<string[]>([]);
+  const [perPageCount, setPerPageCount] = useState(100);
 
   // Update state when initialData changes
   useEffect(() => {
@@ -69,6 +70,9 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
       if (message.includes("Found package:")) {
         const packageName = message.split("Found package: ")[1];
         setPackages(prev => [...new Set([...prev, packageName])]);
+      } else if (message.includes("Found") && message.includes("potential package.json files")) {
+        // Log when we find package.json files
+        console.log("📦 Scanning package.json files...");
       }
       originalConsoleLog.apply(console, args);
     };
@@ -87,7 +91,7 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
       console.log("📥 Loading more projects...", { page: page + 1 });
       setIsLoading(true);
       const nextPage = page + 1;
-      const response = await fetchDependentProjects(owner, repo, nextPage);
+      const response = await fetchDependentProjects(owner, repo, nextPage, perPageCount);
       
       console.log("✅ Loaded more projects:", {
         newItems: response.data.length,
@@ -108,7 +112,7 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, hasNextPage, isPartialResult, owner, repo, page]);
+  }, [isLoading, hasNextPage, isPartialResult, owner, repo, page, perPageCount]);
 
   // Load more projects when the last item comes into view
   useEffect(() => {
@@ -315,9 +319,35 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
       {/* Filter Bar */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">Dependent Projects</h2>
-        <Button variant="outline" size="sm" className="gap-1.5 border-solv-purple/20 text-muted-foreground">
-          <Filter className="h-4 w-4" /> Filter
-        </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">Show:</label>
+            <select
+              className="bg-solv-background border border-solv-purple/20 rounded px-2 py-1 text-sm"
+              value={perPageCount}
+              onChange={(e) => {
+                const newCount = parseInt(e.target.value);
+                setPerPageCount(newCount);
+                // Reset page and reload with new count
+                setPage(1);
+                setProjects([]);
+                fetchDependentProjects(owner, repo, 1, newCount).then(response => {
+                  setProjects(response.data);
+                  setHasNextPage(response.hasNextPage);
+                  setIsPartialResult(response.isPartialResult);
+                  setError(response.error);
+                });
+              }}
+            >
+              <option value="30">30 per page</option>
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+            </select>
+          </div>
+          <Button variant="outline" size="sm" className="gap-1.5 border-solv-purple/20 text-muted-foreground">
+            <Filter className="h-4 w-4" /> Filter
+          </Button>
+        </div>
       </div>
 
       {/* Projects Table */}

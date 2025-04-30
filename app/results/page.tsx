@@ -29,7 +29,7 @@ export default async function ResultsPage({ searchParams }: PageProps) {
   let initialData;
   try {
     // Start fetching data with progress updates
-    initialData = await fetchDependentProjects(owner, repo, 1, 30, (progress) => {
+    initialData = await fetchDependentProjects(owner, repo, 1, 100, (progress) => {
       console.log("📊 Progress update:", {
         found: progress.data.length,
         processed: progress.processedPackages,
