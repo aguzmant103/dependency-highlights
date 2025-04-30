@@ -13,7 +13,7 @@ import { toast } from "sonner"
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
 
 export function SearchForm() {
-  const [repoUrl, setRepoUrl] = useState("")
+  const [repoUrl, setRepoUrl] = useState("semaphore-protocol/semaphore")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 

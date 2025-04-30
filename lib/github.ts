@@ -150,6 +150,7 @@ export async function fetchDependentProjects(
   repo: string,
   page = 1,
   perPage = 30,
+  selectedPackages: string[] = [],
   onProgress?: (result: BatchProcessingResult) => void
 ): Promise<BatchProcessingResult> {
   try {
@@ -172,6 +173,22 @@ export async function fetchDependentProjects(
     const packages = await discoverPackages(owner, repo);
     console.log(`📦 Found ${packages.length} packages in repository:`, packages);
 
+    // Filter packages if specific ones are selected
+    const packagesToProcess = selectedPackages.length > 0
+      ? packages.filter(pkg => selectedPackages.includes(pkg.name))
+      : packages;
+
+    if (packagesToProcess.length === 0) {
+      return {
+        data: [],
+        hasNextPage: false,
+        isPartialResult: false,
+        error: 'No packages found or selected',
+        processedPackages: 0,
+        totalPackages: 0
+      };
+    }
+
     // Process packages in batches
     const allDependents: DependentProject[] = [];
     let isPartialResult = false;
@@ -185,16 +202,16 @@ export async function fetchDependentProjects(
         hasNextPage: allDependents.length > perPage,
         isPartialResult,
         error: batchError,
-        processedPackages: Math.min(allDependents.length, packages.length),
-        totalPackages: packages.length
+        processedPackages: Math.min(allDependents.length, packagesToProcess.length),
+        totalPackages: packagesToProcess.length
       };
       onProgress?.(result);
       return result;
     };
 
-    for (let i = 0; i < packages.length; i += BATCH_SIZE) {
-      const batch = packages.slice(i, i + BATCH_SIZE);
-      console.log(`🔄 Processing batch ${i / BATCH_SIZE + 1} of ${Math.ceil(packages.length / BATCH_SIZE)}`);
+    for (let i = 0; i < packagesToProcess.length; i += BATCH_SIZE) {
+      const batch = packagesToProcess.slice(i, i + BATCH_SIZE);
+      console.log(`🔄 Processing batch ${i / BATCH_SIZE + 1} of ${Math.ceil(packagesToProcess.length / BATCH_SIZE)}`);
 
       // Check rate limit before processing batch
       const canContinue = await githubRateLimiter.hasRemainingRequests();
@@ -272,7 +289,7 @@ export async function fetchDependentProjects(
         await Promise.all(batchPromises);
 
         // Add delay between batches if there are more to process
-        if (i + BATCH_SIZE < packages.length) {
+        if (i + BATCH_SIZE < packagesToProcess.length) {
           console.log(`😴 Waiting ${BATCH_DELAY_MS}ms before next batch...`);
           await sleep(BATCH_DELAY_MS);
         }

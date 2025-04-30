@@ -2,6 +2,10 @@ import { Octokit } from "@octokit/rest";
 import PQueue from "p-queue";
 import { LRUCache } from "lru-cache";
 import { GitHubSearchResponse, GitHubSearchCodeItem, GitHubContent, GitHubCommit, GitHubRepository } from "./github-types";
+import { mockData } from "./mock-data";
+
+// Helper function to sleep
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Rate limit configuration
 const RATE_LIMIT_CONFIG = {
@@ -95,18 +99,22 @@ type GitHubEndpoints = {
 };
 
 class GitHubRateLimiter {
-  private octokit: Octokit;
+  private octokit: Octokit | null = null;
+  private isMockMode: boolean;
   private pointsUsed: number = 0;
   private pointsResetTime: number = Date.now() + 60000;
   private currentRateLimits: RateLimits | null = null;
 
   constructor(token?: string) {
-    this.octokit = new Octokit({
-      auth: token,
-      request: {
-        hook: this.rateLimitHook.bind(this),
-      },
-    });
+    this.isMockMode = process.env.NEXT_PUBLIC_MOCK_MODE === 'true';
+    if (!this.isMockMode) {
+      this.octokit = new Octokit({
+        auth: token,
+        request: {
+          timeout: 5000
+        }
+      });
+    }
   }
 
   private async rateLimitHook(request: RequestFunction, options: RequestOptions) {
@@ -172,6 +180,14 @@ class GitHubRateLimiter {
     url: T extends `${string} ${infer U}` ? U : never,
     options: Omit<RequestOptions, 'method' | 'url'> = {}
   ): Promise<GitHubEndpoints[T]> {
+    if (this.isMockMode) {
+      return this.handleMockRequest(method, url, options);
+    }
+
+    if (!this.octokit) {
+      throw new Error('Octokit not initialized');
+    }
+
     const cacheKey = this.getCacheKey({ method, url, ...options });
     
     // Check response cache first
@@ -192,7 +208,7 @@ class GitHubRateLimiter {
                 throw new Error('Search endpoint requires a query parameter (q)');
               }
               // For search, spread the params directly into the request
-              const response = await this.octokit.request({
+              const response = await this.octokit!.request({
                 method,
                 url,
                 ...options.params,
@@ -209,7 +225,7 @@ class GitHubRateLimiter {
               return encodeURIComponent(String(value));
             });
 
-            const response = await this.octokit.request({
+            const response = await this.octokit!.request({
               method,
               url: formattedUrl,
               ...options,
@@ -225,22 +241,72 @@ class GitHubRateLimiter {
 
             return response.data as GitHubEndpoints[T];
           } catch (error) {
-            const shouldRetry = await this.handleRateLimitError(error as GitHubError, retryCount);
-            if (!shouldRetry) {
+            retryCount++;
+            if (retryCount === RATE_LIMIT_CONFIG.QUEUE_MAX_RETRIES) {
               throw error;
             }
-            retryCount++;
+            await sleep(1000 * retryCount);
           }
         }
         throw new Error('Max retries exceeded');
-      },
-      { priority: options.priority || 0 }
+      }
     ) as Promise<GitHubEndpoints[T]>;
   }
 
+  private async handleMockRequest<T extends keyof GitHubEndpoints>(
+    method: T extends `${infer M} ${string}` ? M : never,
+    url: T extends `${string} ${infer U}` ? U : never,
+    options: Omit<RequestOptions, 'method' | 'url'> = {}
+  ): Promise<GitHubEndpoints[T]> {
+    // Simulate network delay
+    await sleep(300);
+    
+    console.log('🔍 Mock request details:', { method, url, options });
+    
+    // Decode the URL and extract parts
+    const decodedUrl = decodeURIComponent(url);
+    const urlParts = decodedUrl.split('/');
+    console.log('🔍 Decoded URL parts:', urlParts);
+    
+    const owner = urlParts[2];
+    const repo = urlParts[3];
+    
+    if (decodedUrl.startsWith('/search/code')) {
+      return mockData.searchCode(options.params?.q as string) as GitHubEndpoints[T];
+    } else if (decodedUrl.startsWith('/repos/') && urlParts.length === 4) {
+      return mockData.getRepository(owner, repo) as GitHubEndpoints[T];
+    } else if (decodedUrl.startsWith('/repos/') && urlParts[4] === 'contents') {
+      // Get the path from the options params if available, otherwise use the URL part
+      const path = (options.params?.path as string) || urlParts[5];
+      console.log('🔍 Extracted path:', path);
+      return mockData.getContent(owner, repo, path) as GitHubEndpoints[T];
+    } else if (decodedUrl.startsWith('/repos/') && urlParts[4] === 'commits') {
+      return mockData.getCommits(owner, repo) as GitHubEndpoints[T];
+    }
+    
+    throw new Error(`Mock data not implemented for endpoint: ${url}`);
+  }
+
   public async getRateLimits(): Promise<RateLimits> {
+    if (this.isMockMode) {
+      return {
+        core: {
+          limit: 5000,
+          remaining: 5000,
+          reset: Date.now() + 3600000,
+          used: 0
+        },
+        search: {
+          limit: 30,
+          remaining: 30,
+          reset: Date.now() + 60000,
+          used: 0
+        }
+      };
+    }
+
     try {
-      const response = await this.octokit.rateLimit.get();
+      const response = await this.octokit!.rateLimit.get();
       this.currentRateLimits = response.data.resources;
       return this.currentRateLimits;
     } catch (error) {

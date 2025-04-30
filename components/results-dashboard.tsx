@@ -22,9 +22,11 @@ interface ResultsDashboardProps {
     processedPackages?: number;
     totalPackages?: number;
   };
+  selectedPackages: string[];
+  totalPackages: number;
 }
 
-export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardProps) {
+export function ResultsDashboard({ owner, repo, initialData, selectedPackages, totalPackages }: ResultsDashboardProps) {
   console.log("🔄 ResultsDashboard rendered with props:", { owner, repo, initialData });
 
   const [projects, setProjects] = useState<DependentProject[]>(initialData?.data || []);
@@ -215,6 +217,16 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
 
   return (
     <div className="space-y-6">
+      {/* Subtitle */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tighter mb-2 text-solv-lightPurple">
+          Projects Depending on <span className="inline-block bg-white/10 border border-white/20 rounded-lg px-3 py-1 text-white shadow-md animate-fade-in">{owner}/{repo}</span>
+        </h1>
+        <p className="text-muted-foreground">
+          Showing projects that depend on this repository and selected packages, with recently active ones highlighted.
+        </p>
+      </div>
+
       {/* Progress Bar - Show only during initial load or when partial */}
       {((progress.processed < progress.total) || isPartialResult) && (
         <Card className="bg-solv-card border-solv-purple/20">
@@ -260,7 +272,7 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="bg-solv-card border-solv-purple/20">
           <CardContent className="p-6">
             <div className="text-sm text-muted-foreground">Total Dependent Projects</div>
@@ -290,7 +302,12 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
             <div className="text-3xl font-bold mt-2 text-solv-lightPurple">{totalForks?.toLocaleString() || '0'}</div>
           </CardContent>
         </Card>
-        
+        <Card className="bg-solv-card border-solv-purple/20">
+          <CardContent className="p-6">
+            <div className="text-sm text-muted-foreground">Total Packages</div>
+            <div className="text-3xl font-bold mt-2 text-blue-400">{selectedPackages.length} / {totalPackages}</div>
+          </CardContent>
+        </Card>
         {isPartialResult && (
           <Card className="col-span-full bg-yellow-500/10 border-yellow-500/30">
             <CardContent className="p-6">
@@ -314,6 +331,18 @@ export function ResultsDashboard({ owner, repo, initialData }: ResultsDashboardP
             </CardContent>
           </Card>
         )}
+      </div>
+
+      {/* Selected Packages */}
+      <div className="mt-2">
+        <div className="text-xs text-muted-foreground mb-1">Selected Packages:</div>
+        <div className="flex flex-wrap gap-2">
+          {selectedPackages.map(pkg => (
+            <Badge key={pkg} variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+              {pkg}
+            </Badge>
+          ))}
+        </div>
       </div>
 
       {/* Filter Bar */}
