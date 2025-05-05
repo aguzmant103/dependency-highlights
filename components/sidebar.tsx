@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Github, Home, GitFork, Activity, Zap } from "lucide-react"
+import { Home, Zap, Github, GitFork, Activity } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
 
@@ -33,7 +33,8 @@ export function Sidebar({ className }: SidebarProps) {
 
         <Link
           href="#"
-          className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-solv-purple/10 text-muted-foreground hover:text-white"
+          aria-disabled="true"
+          className="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground pointer-events-none opacity-50"
         >
           <Github className="h-4 w-4" />
           <span>Repositories</span>
@@ -41,7 +42,8 @@ export function Sidebar({ className }: SidebarProps) {
 
         <Link
           href="#"
-          className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-solv-purple/10 text-muted-foreground hover:text-white"
+          aria-disabled="true"
+          className="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground pointer-events-none opacity-50"
         >
           <GitFork className="h-4 w-4" />
           <span>Dependencies</span>
@@ -49,7 +51,8 @@ export function Sidebar({ className }: SidebarProps) {
 
         <Link
           href="#"
-          className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-solv-purple/10 text-muted-foreground hover:text-white"
+          aria-disabled="true"
+          className="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground pointer-events-none opacity-50"
         >
           <Activity className="h-4 w-4" />
           <span>Analytics</span>

@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { ResultsDashboard } from "@/components/results-dashboard"
 import { PackageSelection } from "@/components/package-selection"
 import { ResultsLoading } from "@/components/results-loading"
-import { fetchDependentProjects, BatchProcessingResult } from "@/lib/github"
 
 interface ResultsClientProps {
   owner: string;
@@ -12,47 +11,26 @@ interface ResultsClientProps {
 }
 
 export function ResultsClient({ owner, repo }: ResultsClientProps) {
-  const [initialData, setInitialData] = useState<BatchProcessingResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
-
-  useEffect(() => {
-    setInitialData(null); // Reset when owner/repo changes
-    setIsAnalyzing(false);
-    setSelectedPackages([]);
-  }, [owner, repo]);
 
   const handlePackageSelection = async (packages: string[]) => {
     setSelectedPackages(packages);
     setIsAnalyzing(true);
     
-    try {
-      console.log("🔍 Starting analysis for packages:", packages);
-      const data = await fetchDependentProjects(owner, repo, 1, 100, packages, (progress) => {
-        console.log("📊 Progress update:", {
-          found: progress.data.length,
-          processed: progress.processedPackages,
-          total: progress.totalPackages,
-          isPartial: progress.isPartialResult
-        });
-      });
-      setInitialData(data);
-    } catch (error) {
-      console.error("Failed to analyze packages:", error);
-    } finally {
+    // Simulate analysis delay
+    setTimeout(() => {
       setIsAnalyzing(false);
-    }
+    }, 2000);
   };
 
   if (isAnalyzing) {
     return <ResultsLoading />;
   }
 
-  if (!initialData) {
+  if (selectedPackages.length === 0) {
     return (
       <PackageSelection 
-        owner={owner} 
-        repo={repo} 
         onSelectionComplete={handlePackageSelection} 
       />
     );
@@ -61,10 +39,7 @@ export function ResultsClient({ owner, repo }: ResultsClientProps) {
   return (
     <ResultsDashboard 
       owner={owner} 
-      repo={repo} 
-      initialData={initialData} 
-      selectedPackages={selectedPackages}
-      totalPackages={PackageSelection.length}
+      repo={repo}
     />
   );
 } 

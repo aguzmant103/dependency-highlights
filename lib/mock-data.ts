@@ -1,4 +1,165 @@
-import { GitHubSearchResponse, GitHubSearchCodeItem, GitHubRepository, GitHubContent, GitHubCommit } from './github-types';
+export interface DependentProject {
+  id: string;
+  name: string;
+  owner: string;
+  stars: number;
+  forks: number;
+  lastUpdated: string;
+  description: string;
+  url: string;
+  isActive?: boolean;
+  lastCommit?: string;
+  package?: string;
+}
+
+export const mockDependentProjects: DependentProject[] = [
+  {
+    id: "react-1",
+    name: "react",
+    owner: "facebook",
+    stars: 200000,
+    forks: 40000,
+    lastUpdated: "2024-04-30",
+    description: "A declarative, efficient, and flexible JavaScript library for building user interfaces.",
+    url: "https://github.com/facebook/react",
+    isActive: true,
+    lastCommit: "2 days ago",
+    package: "react"
+  },
+  {
+    id: "next-1",
+    name: "next.js",
+    owner: "vercel",
+    stars: 120000,
+    forks: 25000,
+    lastUpdated: "2024-04-29",
+    description: "The React Framework for Production",
+    url: "https://github.com/vercel/next.js",
+    isActive: true,
+    lastCommit: "1 day ago",
+    package: "next"
+  },
+  {
+    id: "typescript-1",
+    name: "typescript",
+    owner: "microsoft",
+    stars: 95000,
+    forks: 12000,
+    lastUpdated: "2024-04-28",
+    description: "TypeScript is a superset of JavaScript that compiles to clean JavaScript output.",
+    url: "https://github.com/microsoft/TypeScript",
+    isActive: true,
+    lastCommit: "3 days ago",
+    package: "typescript"
+  }
+];
+
+export interface GitHubSearchResponse<T> {
+  total_count: number;
+  incomplete_results: boolean;
+  items: T[];
+}
+
+export interface GitHubSearchCodeItem {
+  name: string;
+  path: string;
+  sha: string;
+  url: string;
+  git_url: string;
+  html_url: string;
+  repository: GitHubRepository;
+}
+
+export interface GitHubRepository {
+  id: number;
+  node_id: string;
+  name: string;
+  full_name: string;
+  description: string;
+  html_url: string;
+  stargazers_count: number;
+  forks_count: number;
+  owner: GitHubUser;
+}
+
+export interface GitHubUser {
+  login: string;
+  id: number;
+  node_id: string;
+  avatar_url: string;
+  html_url: string;
+}
+
+export interface GitHubContent {
+  name: string;
+  path: string;
+  sha: string;
+  size: number;
+  url: string;
+  html_url: string;
+  git_url: string;
+  download_url: string;
+  type: string;
+  content: string;
+  encoding: string;
+}
+
+export interface GitHubCommit {
+  sha: string;
+  node_id: string;
+  commit: {
+    author: {
+      name: string;
+      email: string;
+      date: string;
+    };
+    committer: {
+      name: string;
+      email: string;
+      date: string;
+    };
+    message: string;
+    tree: {
+      sha: string;
+      url: string;
+    };
+    url: string;
+    comment_count: number;
+    verification: {
+      verified: boolean;
+      reason: string;
+      signature: string | null;
+      payload: string | null;
+    };
+  };
+  url: string;
+  html_url: string;
+  comments_url: string;
+}
+
+export interface GitHubDependencyGraph {
+  sbom: {
+    packages: Array<{
+      name: string;
+      version: string;
+      type: string;
+    }>;
+  };
+}
+
+export interface GitHubDependentsResponse {
+  total_count: number;
+  items: Array<{
+    node_id: string;
+    name: string;
+    full_name: string;
+    description: string;
+    stargazers_count: number;
+    forks_count: number;
+    html_url: string;
+    owner: GitHubUser;
+  }>;
+}
 
 export const mockData = {
   searchCode: (query: string): GitHubSearchResponse<GitHubSearchCodeItem> => {
@@ -272,5 +433,47 @@ export const mockData = {
     url: `https://api.github.com/repos/${owner}/${repo}/commits/mock-commit-sha`,
     html_url: `https://github.com/${owner}/${repo}/commit/mock-commit-sha`,
     comments_url: `https://api.github.com/repos/${owner}/${repo}/commits/mock-commit-sha/comments`
-  }]
+  }],
+
+  getDependencyGraph: (): GitHubDependencyGraph => ({
+    sbom: {
+      packages: [
+        { name: '@semaphore-protocol/contracts', version: '1.0.0', type: 'npm' },
+        { name: '@semaphore-protocol/identity', version: '1.0.0', type: 'npm' },
+        { name: '@semaphore-protocol/proof', version: '1.0.0', type: 'npm' },
+        { name: '@semaphore-protocol/semaphore', version: '1.0.0', type: 'npm' }
+      ]
+    }
+  }),
+
+  getDependents: (): GitHubDependentsResponse => {
+    // Reuse the existing mock data for dependents
+    const dependents = [
+      { name: 'anonkarma', description: 'zk Identity Provider', isActive: false, lastCommit: '2024-03-27' },
+      { name: 'bandada', description: 'A system for managing privacy-preserving groups.', isActive: true, lastCommit: '2025-04-04' },
+      { name: 'extensions', description: 'Semaphore tools and extensions.', isActive: true, lastCommit: '2025-02-25' },
+      { name: 'semaphore', description: 'A zero-knowledge protocol for anonymous interactions.', isActive: true, lastCommit: '2025-04-02' },
+      { name: 'zupass', description: 'Zuzalu Passport', isActive: true, lastCommit: '2025-04-14' }
+    ];
+
+    return {
+      total_count: dependents.length,
+      items: dependents.map((dep, i) => ({
+        node_id: `mock-node-id-${i}`,
+        name: dep.name,
+        full_name: `owner/${dep.name}`,
+        description: dep.description,
+        stargazers_count: 100,
+        forks_count: 50,
+        html_url: `https://github.com/owner/${dep.name}`,
+        owner: {
+          login: 'owner',
+          id: 456,
+          node_id: 'mock-owner-node-id',
+          avatar_url: 'https://github.com/owner.png',
+          html_url: 'https://github.com/owner'
+        }
+      }))
+    };
+  }
 }; 

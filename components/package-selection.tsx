@@ -4,37 +4,61 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Package } from "@/lib/github"
+
+interface Package {
+  name: string;
+  type: string;
+  path: string;
+}
 
 interface PackageSelectionProps {
-  owner: string;
-  repo: string;
   onSelectionComplete: (selectedPackages: string[]) => void;
 }
 
-export function PackageSelection({ owner, repo, onSelectionComplete }: PackageSelectionProps) {
-  const [packages, setPackages] = useState<Package[]>([]);
+const mockPackages: Package[] = [
+  {
+    name: "react",
+    type: "dependency",
+    path: "package.json"
+  },
+  {
+    name: "next",
+    type: "dependency",
+    path: "package.json"
+  },
+  {
+    name: "typescript",
+    type: "devDependency",
+    path: "package.json"
+  },
+  {
+    name: "tailwindcss",
+    type: "devDependency",
+    path: "package.json"
+  },
+  {
+    name: "eslint",
+    type: "devDependency",
+    path: "package.json"
+  },
+  {
+    name: "prettier",
+    type: "devDependency",
+    path: "package.json"
+  }
+];
+
+export function PackageSelection({ onSelectionComplete }: PackageSelectionProps) {
+  const [packages] = useState<Package[]>(mockPackages);
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchPackages() {
-      try {
-        console.log("🔍 Fetching packages for", owner, repo);
-        const response = await fetch(`/api/github?action=packages&owner=${owner}&repo=${repo}`);
-        if (!response.ok) throw new Error('Failed to fetch packages');
-        const data = await response.json();
-        setPackages(data);
-        console.log("✅ Found packages:", data.map((p: Package) => p.name));
-      } catch (error) {
-        console.error("Failed to fetch packages:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchPackages();
-  }, [owner, repo]);
+    // Simulate loading delay
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
+  }, []);
 
   const togglePackage = (packageName: string) => {
     setSelectedPackages(prev => 

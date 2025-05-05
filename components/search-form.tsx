@@ -8,9 +8,25 @@ import { Github } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { parseRepoUrl } from "@/lib/github"
 import { toast } from "sonner"
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
+
+function parseRepoUrl(url: string): { owner: string; repo: string } {
+  // Remove any GitHub URL prefix
+  const cleanUrl = url.replace(/^https?:\/\/(?:www\.)?github\.com\//, '');
+  
+  // Split by slash and remove any empty parts
+  const parts = cleanUrl.split('/').filter(Boolean);
+  
+  if (parts.length < 2) {
+    throw new Error("Invalid repository format. Please use 'owner/repo' or GitHub URL.");
+  }
+  
+  return {
+    owner: parts[0],
+    repo: parts[1]
+  };
+}
 
 export function SearchForm() {
   const [repoUrl, setRepoUrl] = useState("semaphore-protocol/semaphore")
