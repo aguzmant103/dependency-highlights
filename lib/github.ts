@@ -122,7 +122,10 @@ export async function findDependentRepositories(packageName: string): Promise<De
     
     const response = await octokit.search.code({
       q: searchQuery,
-      per_page: 100
+      per_page: 100,
+      headers: {
+        accept: 'application/vnd.github.v3+json'
+      }
     });
 
     console.log(`├─ Found ${response.data.total_count} potential matches`);
@@ -141,6 +144,19 @@ export async function findDependentRepositories(packageName: string): Promise<De
       console.log(`├─ Processing repository: ${repoFullName}`);
       
       try {
+        // Get repository details first
+        const repoResponse = await octokit.repos.get({
+          owner: item.repository.owner.login,
+          repo: item.repository.name
+        });
+
+        console.log(`├─ Fetched repository details:`, {
+          stars: repoResponse.data.stargazers_count,
+          forks: repoResponse.data.forks_count,
+          description: repoResponse.data.description,
+          updated_at: repoResponse.data.updated_at
+        });
+
         // Get package.json content to verify dependency
         const contentResponse = await octokit.repos.getContent({
           owner: item.repository.owner.login,
@@ -257,20 +273,20 @@ export async function findDependentRepositories(packageName: string): Promise<De
 
             // Add to dependent repositories with enhanced information
             console.log(`├─ Repository details for ${repoFullName}:`, {
-              stars: item.repository.stargazers_count,
-              forks: item.repository.forks_count,
-              description: item.repository.description,
-              updated_at: item.repository.updated_at
+              stars: repoResponse.data.stargazers_count,
+              forks: repoResponse.data.forks_count,
+              description: repoResponse.data.description,
+              updated_at: repoResponse.data.updated_at
             });
 
             dependentRepos.push({
               name: item.repository.name,
               fullName: repoFullName,
-              description: item.repository.description || null,
-              url: item.repository.html_url,
-              lastUpdated: item.repository.updated_at || new Date().toISOString(),
-              stars: item.repository.stargazers_count || 0,
-              forks: item.repository.forks_count || 0,
+              description: repoResponse.data.description || null,
+              url: repoResponse.data.html_url,
+              lastUpdated: repoResponse.data.updated_at || new Date().toISOString(),
+              stars: repoResponse.data.stargazers_count || 0,
+              forks: repoResponse.data.forks_count || 0,
               dependencyType: references[0] || 'unknown',
               dependencyVersion: version,
               isWorkspace: !!packageJson.workspaces,
@@ -278,7 +294,7 @@ export async function findDependentRepositories(packageName: string): Promise<De
             });
 
             // Log repository stats for verification
-            console.log(`├─   Stats: ⭐ ${item.repository.stargazers_count} 🍴 ${item.repository.forks_count}`);
+            console.log(`├─   Stats: ⭐ ${repoResponse.data.stargazers_count} 🍴 ${repoResponse.data.forks_count}`);
           } else {
             console.log(`├─ ⚠️ Reference found but not confirmed in ${repoFullName}`);
           }
