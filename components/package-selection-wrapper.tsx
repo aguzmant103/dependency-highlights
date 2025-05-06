@@ -1,18 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { ResultsDashboard } from "@/components/results-dashboard"
 import { PackageSelection } from "@/components/package-selection"
 import { ResultsLoading } from "@/components/results-loading"
+import { ResultsDashboard } from "@/components/results-dashboard"
 import { Badge } from "@/components/ui/badge"
 import { Stepper } from "@/components/stepper"
 
-interface ResultsClientProps {
+interface PackageSelectionWrapperProps {
   owner: string;
   repo: string;
 }
 
-export function ResultsClient({ owner, repo }: ResultsClientProps) {
+export function PackageSelectionWrapper({ owner, repo }: PackageSelectionWrapperProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
 
@@ -36,16 +36,11 @@ export function ResultsClient({ owner, repo }: ResultsClientProps) {
 
   if (selectedPackages.length === 0) {
     return (
-      <>
-        <Stepper step={1} />
-        <div className="mb-4 text-lg font-semibold text-solv-lightPurple">Step 1: Select Packages to Analyze</div>
-        <div className="mb-2 text-muted-foreground">Select which packages in this repository you want to analyze for dependents. Only selected packages will be used in the next step.</div>
-        <PackageSelection 
-          owner={owner} 
-          repo={repo} 
-          onSelectionComplete={handlePackageSelection} 
-        />
-      </>
+      <PackageSelection 
+        owner={owner} 
+        repo={repo} 
+        onSelectionComplete={handlePackageSelection} 
+      />
     );
   }
 
