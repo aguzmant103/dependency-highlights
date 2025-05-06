@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ExternalLink, Star } from "lucide-react"
+import { ExternalLink, Star, GitFork } from "lucide-react"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 
 interface DependentRepository {
@@ -12,6 +12,11 @@ interface DependentRepository {
   url: string;
   lastUpdated: string;
   stars: number;
+  forks: number;
+  dependencyType: string;
+  dependencyVersion: string;
+  isWorkspace: boolean;
+  isPrivate: boolean;
 }
 
 interface SortableDependentProjectsProps {
@@ -37,6 +42,12 @@ export function SortableDependentProjects({ projects }: SortableDependentProject
       return sortConfig.direction === 'asc'
         ? aDesc.localeCompare(bDesc)
         : bDesc.localeCompare(aDesc);
+    }
+
+    if (sortConfig.key === 'stars' || sortConfig.key === 'forks') {
+      return sortConfig.direction === 'asc'
+        ? (a[sortConfig.key] || 0) - (b[sortConfig.key] || 0)
+        : (b[sortConfig.key] || 0) - (a[sortConfig.key] || 0);
     }
     
     const aValue = a[sortConfig.key];
@@ -73,10 +84,25 @@ export function SortableDependentProjects({ projects }: SortableDependentProject
               className="cursor-pointer hover:text-solv-lightPurple text-right"
               onClick={() => requestSort('stars')}
             >
-              Stars
-              {sortConfig.key === 'stars' && (
-                <span className="ml-2">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-              )}
+              <div className="flex items-center justify-end gap-1">
+                <Star className="h-4 w-4" />
+                Stars
+                {sortConfig.key === 'stars' && (
+                  <span className="ml-2">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                )}
+              </div>
+            </TableHead>
+            <TableHead 
+              className="cursor-pointer hover:text-solv-lightPurple text-right"
+              onClick={() => requestSort('forks')}
+            >
+              <div className="flex items-center justify-end gap-1">
+                <GitFork className="h-4 w-4" />
+                Forks
+                {sortConfig.key === 'forks' && (
+                  <span className="ml-2">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                )}
+              </div>
             </TableHead>
             <TableHead 
               className="cursor-pointer hover:text-solv-lightPurple text-right"
@@ -110,6 +136,12 @@ export function SortableDependentProjects({ projects }: SortableDependentProject
                 <div className="flex items-center justify-end gap-1">
                   <Star className="h-4 w-4" />
                   {project.stars.toLocaleString()}
+                </div>
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex items-center justify-end gap-1">
+                  <GitFork className="h-4 w-4" />
+                  {project.forks.toLocaleString()}
                 </div>
               </TableCell>
               <TableCell className="text-right">

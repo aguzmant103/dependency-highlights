@@ -91,6 +91,7 @@ export interface DependentRepository {
   url: string;
   lastUpdated: string;
   stars: number;
+  forks: number;
   dependencyType: string;
   dependencyVersion: string;
   isWorkspace: boolean;
@@ -104,13 +105,16 @@ export async function findDependentRepositories(packageName: string): Promise<De
     // For scoped packages like @zk-kit/lean-imt, we need to search both with and without the scope
     const searchTerms = packageName.startsWith('@') 
       ? [
+          packageName, // @zk-kit/lean-imt
+          `"${packageName}"`, // "@zk-kit/lean-imt"
           packageName.replace('@', '').replace('/', '\\/'), // zk-kit/lean-imt
           packageName.split('/')[1], // lean-imt
+          `@${packageName.split('/')[0].substring(1)}\\/${packageName.split('/')[1]}` // @zk-kit\/lean-imt
         ]
-      : [packageName];
+      : [packageName, `"${packageName}"`];
     
     const searchQuery = searchTerms
-      .map(term => `"${term}"`)
+      .map(term => term.includes('"') ? term : `"${term}"`)
       .join(' OR ') + ' filename:package.json';
     
     console.log(`├─ Executing GitHub search query: ${searchQuery}`);
@@ -148,17 +152,32 @@ export async function findDependentRepositories(packageName: string): Promise<De
           const content = Buffer.from(contentResponse.data.content, 'base64').toString();
           const packageJson = JSON.parse(content);
           
+          // Check if the package name appears in the raw content (for cases where JSON.parse might miss it)
+          const contentIncludesPackage = searchTerms.some(pkg => content.includes(`"${pkg}"`) || content.includes(`'${pkg}'`));
+
           // Helper function to check if package exists in a dependency object
-          const isInDependencies = (pkg: string, depsObj: Record<string, string> | undefined) => 
-            depsObj && (pkg in depsObj);
+          const isInDependencies = (pkg: string, depsObj: Record<string, string> | undefined) => {
+            if (!depsObj) return false;
+            // Check both exact match and as a substring (for workspace dependencies)
+            return Object.keys(depsObj).some(dep => 
+              dep === pkg || 
+              dep.includes(pkg) || 
+              (pkg.startsWith('@') && dep.includes(pkg.split('/')[1]))
+            );
+          };
 
           // Helper function to check workspace references
           const isInWorkspaces = (pkg: string, workspaces: string[] | Record<string, string[]> | undefined) => {
             if (!workspaces) return false;
-            if (Array.isArray(workspaces)) {
-              return workspaces.some(w => w.includes(pkg));
-            }
-            return Object.values(workspaces).flat().some(w => w.includes(pkg));
+            const workspacePatterns = Array.isArray(workspaces) ? workspaces : Object.values(workspaces).flat();
+            // Check if any workspace pattern could potentially include our package
+            return workspacePatterns.some(pattern => {
+              // Convert glob pattern to regex-like check
+              const regexPattern = pattern
+                .replace(/\*/g, '.*')
+                .replace(/\//g, '\\/');
+              return new RegExp(regexPattern).test(pkg);
+            });
           };
 
           // Get all possible package name variants
@@ -186,11 +205,32 @@ export async function findDependentRepositories(packageName: string): Promise<De
             // Check if it's mentioned in the name field
             packageVariants.some(pkg => packageJson.name === pkg),
             // Check if it's a workspace package
-            packageJson.name?.startsWith(packageName) && packageJson.name?.includes('workspace')
+            packageJson.name?.startsWith(packageName) && packageJson.name?.includes('workspace'),
+            // Check raw content
+            contentIncludesPackage
           ].some(Boolean);
 
           if (hasDependency) {
-            console.log(`├─ ✅ Confirmed dependency in ${repoFullName}`);
+            // Collect all the ways this package is referenced
+            const references = [];
+            
+            if (packageJson.dependencies && Object.keys(packageJson.dependencies).some(d => packageVariants.includes(d))) {
+              references.push('dependencies');
+            }
+            if (packageJson.devDependencies && Object.keys(packageJson.devDependencies).some(d => packageVariants.includes(d))) {
+              references.push('devDependencies');
+            }
+            if (packageJson.peerDependencies && Object.keys(packageJson.peerDependencies).some(d => packageVariants.includes(d))) {
+              references.push('peerDependencies');
+            }
+            if (packageJson.workspaces) {
+              references.push('workspaces');
+            }
+            if (contentIncludesPackage) {
+              references.push('content');
+            }
+
+            console.log(`├─ ✅ Found dependency in ${repoFullName} (${references.join(', ')})`);
             
             // Get the version information from all possible locations
             const versionInfo = packageVariants.map(pkg => ({
@@ -211,23 +251,18 @@ export async function findDependentRepositories(packageName: string): Promise<De
                   .find(([, v]) => v !== undefined)?.[1] || 'unknown'
               : 'unknown';
 
-            // Log detailed dependency information
-            console.log(`├─   Version: ${version}`);
-            console.log(`├─   Package Variant: ${versionInfo?.pkg || packageName}`);
-            
-            // Try to get additional context about the dependency
-            const dependencyContext = [
-              packageJson.name && `Project: ${packageJson.name}`,
-              packageJson.version && `Project Version: ${packageJson.version}`,
-              packageJson.private === true && 'Private Package',
-              packageJson.workspaces && 'Workspace Project'
-            ].filter(Boolean).join(', ');
-
-            if (dependencyContext) {
-              console.log(`├─   Context: ${dependencyContext}`);
+            if (version !== 'unknown') {
+              console.log(`├─   Version: ${version}`);
             }
 
             // Add to dependent repositories with enhanced information
+            console.log(`├─ Repository details for ${repoFullName}:`, {
+              stars: item.repository.stargazers_count,
+              forks: item.repository.forks_count,
+              description: item.repository.description,
+              updated_at: item.repository.updated_at
+            });
+
             dependentRepos.push({
               name: item.repository.name,
               fullName: repoFullName,
@@ -235,19 +270,17 @@ export async function findDependentRepositories(packageName: string): Promise<De
               url: item.repository.html_url,
               lastUpdated: item.repository.updated_at || new Date().toISOString(),
               stars: item.repository.stargazers_count || 0,
-              dependencyType: Object.entries(versionInfo?.versions || {})
-                .find(([, v]) => v !== undefined)?.[0] || 'unknown',
+              forks: item.repository.forks_count || 0,
+              dependencyType: references[0] || 'unknown',
               dependencyVersion: version,
               isWorkspace: !!packageJson.workspaces,
               isPrivate: !!packageJson.private
             });
+
+            // Log repository stats for verification
+            console.log(`├─   Stats: ⭐ ${item.repository.stargazers_count} 🍴 ${item.repository.forks_count}`);
           } else {
-            console.log(`├─ ⚠️ Package reference found but not confirmed as dependency in ${repoFullName}`);
-            // Log what was checked to help with debugging
-            console.log(`├─   Checked variants: ${packageVariants.join(', ')}`);
-            if (packageJson.workspaces) {
-              console.log(`├─   Has workspaces: ${JSON.stringify(packageJson.workspaces)}`);
-            }
+            console.log(`├─ ⚠️ Reference found but not confirmed in ${repoFullName}`);
           }
         }
       } catch (error) {

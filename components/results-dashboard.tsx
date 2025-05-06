@@ -10,6 +10,11 @@ interface DependentRepository {
   url: string;
   lastUpdated: string;
   stars: number;
+  forks: number;
+  dependencyType: string;
+  dependencyVersion: string;
+  isWorkspace: boolean;
+  isPrivate: boolean;
 }
 
 interface ResultsDashboardProps {
@@ -59,7 +64,12 @@ export function ResultsDashboard({ selectedPackages }: ResultsDashboardProps): J
                   description: repo.description,
                   url: repo.url || '',
                   lastUpdated: repo.lastUpdated || new Date().toISOString(),
-                  stars: repo.stars || 0
+                  stars: repo.stars || 0,
+                  forks: repo.forks || 0,
+                  dependencyType: repo.dependencyType || 'unknown',
+                  dependencyVersion: repo.dependencyVersion || 'unknown',
+                  isWorkspace: repo.isWorkspace || false,
+                  isPrivate: repo.isPrivate || false
                 });
               }
             }
