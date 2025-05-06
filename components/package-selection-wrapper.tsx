@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { PackageSelection } from "@/components/package-selection"
-import { ResultsLoading } from "@/components/results-loading"
 import { ResultsDashboard } from "@/components/results-dashboard"
 import { Badge } from "@/components/ui/badge"
 import { Stepper } from "@/components/stepper"
@@ -13,26 +12,11 @@ interface PackageSelectionWrapperProps {
 }
 
 export function PackageSelectionWrapper({ owner, repo }: PackageSelectionWrapperProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
 
   const handlePackageSelection = async (packages: string[]) => {
     setSelectedPackages(packages);
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      setIsAnalyzing(false);
-    }, 2000);
   };
-
-  if (isAnalyzing) {
-    return (
-      <>
-        <Stepper step={2} />
-        <div className="mb-4 text-lg font-semibold text-solv-lightPurple">Step 2: Finding Dependent Projects</div>
-        <ResultsLoading />
-      </>
-    );
-  }
 
   if (selectedPackages.length === 0) {
     return (
@@ -54,7 +38,7 @@ export function PackageSelectionWrapper({ owner, repo }: PackageSelectionWrapper
           <Badge key={pkg} variant="outline" className="bg-solv-purple/10 text-solv-lightPurple border-solv-purple/20">{pkg}</Badge>
         ))}
       </div>
-      <ResultsDashboard owner={owner} repo={repo} />
+      <ResultsDashboard selectedPackages={selectedPackages} />
     </>
   );
 } 

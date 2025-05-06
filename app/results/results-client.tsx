@@ -59,7 +59,7 @@ export function ResultsClient({ owner, repo }: ResultsClientProps) {
           <Badge key={pkg} variant="outline" className="bg-solv-purple/10 text-solv-lightPurple border-solv-purple/20">{pkg}</Badge>
         ))}
       </div>
-      <ResultsDashboard owner={owner} repo={repo} />
+      <ResultsDashboard selectedPackages={selectedPackages} />
     </>
   );
 } 

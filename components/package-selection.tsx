@@ -28,7 +28,8 @@ export function PackageSelection({ owner, repo, onSelectionComplete }: PackageSe
       try {
         setIsLoading(true);
         setError(null);
-        console.log('[PackageSelection] Starting package fetch for:', { owner, repo });
+        console.log('\n[PackageSelection] 🔍 Starting package discovery process');
+        console.log(`[PackageSelection] ├─ Repository: ${owner}/${repo}`);
         
         const response = await fetch('/api/github-packages', {
           method: 'POST',
@@ -36,25 +37,33 @@ export function PackageSelection({ owner, repo, onSelectionComplete }: PackageSe
           body: JSON.stringify({ owner, repo }),
         });
         
-        console.log('[PackageSelection] API Response status:', response.status);
+        console.log(`[PackageSelection] ├─ API Response status: ${response.status}`);
         const data = await response.json();
-        console.log('[PackageSelection] API Response data:', data);
         
-        if (!response.ok) throw new Error(data.error || 'Failed to load packages');
+        if (!response.ok) {
+          console.log(`[PackageSelection] ├─ ❌ API Error: ${data.error || 'Unknown error'}`);
+          throw new Error(data.error || 'Failed to load packages');
+        }
         
-        const formattedPackages = data.packages.map((pkg: { name: string; type: string; path: string }) => ({
-          name: pkg.name,
-          type: pkg.type,
-          path: pkg.path
-        }));
+        console.log(`[PackageSelection] ├─ Received ${data.packages?.length || 0} packages from API`);
         
-        console.log('[PackageSelection] Formatted packages:', formattedPackages);
+        const formattedPackages = data.packages.map((pkg: { name: string; type: string; path: string }) => {
+          console.log(`[PackageSelection] ├─ Processing package: ${pkg.name} (${pkg.type}) at ${pkg.path}`);
+          return {
+            name: pkg.name,
+            type: pkg.type,
+            path: pkg.path
+          };
+        });
+        
+        console.log(`[PackageSelection] └─ ✅ Successfully processed ${formattedPackages.length} packages`);
         setPackages(formattedPackages);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load packages';
-        console.error('[PackageSelection] Error details:', {
+        console.error('[PackageSelection] ❌ Error during package discovery:', {
           message: errorMessage,
-          error: err
+          error: err,
+          repository: `${owner}/${repo}`
         });
         setError(errorMessage);
       } finally {
