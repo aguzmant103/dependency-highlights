@@ -31,11 +31,9 @@ export async function fetchDependentProjects(owner: string, repo: string): Promi
 }
 
 export async function fetchRepositoryPackages(owner: string, repo: string): Promise<GitHubPackage[]> {
-  console.log('[fetchRepositoryPackages] Starting fetch for', { owner, repo });
+  console.log(`📦 Fetching packages for ${owner}/${repo}`);
   
   try {
-    // First try to get contents of the packages directory
-    console.log('[fetchRepositoryPackages] Fetching contents of /packages directory...');
     const response = await octokit.request('GET /repos/{owner}/{repo}/contents/packages', {
       owner,
       repo,
@@ -44,45 +42,34 @@ export async function fetchRepositoryPackages(owner: string, repo: string): Prom
       }
     });
 
-    console.log('[fetchRepositoryPackages] Raw API response:', response.data);
-
     if (!Array.isArray(response.data)) {
-      console.log('[fetchRepositoryPackages] Warning: packages/ is not a directory, response type:', typeof response.data);
+      console.log('⚠️ No packages directory found');
       return [];
     }
 
     // Filter only directories as they represent packages
     const packageDirs = response.data.filter(item => item.type === 'dir');
-    console.log('[fetchRepositoryPackages] Found package directories:', packageDirs);
-
     const packages = packageDirs.map(dir => ({
       name: dir.name,
       type: 'npm', // Assuming npm packages for now
       path: dir.path
     }));
 
-    console.log('[fetchRepositoryPackages] Final formatted packages:', packages);
+    console.log(`✅ Found ${packages.length} packages`);
     return packages;
 
   } catch (error) {
-    console.error('[fetchRepositoryPackages] Error details:', {
-      status: (error as RequestError)?.status,
-      message: (error as Error)?.message,
-      name: (error as Error)?.name,
-      stack: (error as Error)?.stack
-    });
-    
     if (error instanceof RequestError) {
       if (error.status === 404) {
-        console.log('[fetchRepositoryPackages] No packages directory found in repository');
+        console.log('⚠️ No packages directory found');
         return [];
       }
-      // Handle rate limiting
       if (error.status === 403 && error.message.includes('rate limit')) {
-        console.log('[fetchRepositoryPackages] Rate limit exceeded. Headers:', error.response?.headers);
+        console.log('⚠️ GitHub API rate limit exceeded');
         throw new Error('GitHub API rate limit exceeded. Please try again later.');
       }
     }
+    console.error('❌ Error fetching packages:', (error as Error).message);
     throw new Error('Failed to fetch repository packages');
   }
 } 

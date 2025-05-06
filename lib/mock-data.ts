@@ -164,8 +164,9 @@ export interface GitHubDependentsResponse {
 export const mockData = {
   searchCode: (query: string): GitHubSearchResponse<GitHubSearchCodeItem> => {
     console.log('[MOCK] searchCode called with query:', query);
-    // Always match any query that includes 'filename:package.json'
+    // Handle search for dependents
     if (query.includes('filename:package.json')) {
+      console.log('🔍 Starting package search...');
       const packages = [
         { name: 'semaphore-protocol', path: 'package.json' },
         { name: 'semaphore-docss', path: 'apps/docs/package.json' },
@@ -191,7 +192,7 @@ export const mockData = {
         { name: '@semaphore-protocol/utils', path: 'packages/utils/package.json' },
         { name: '@semaphore-protocol/core', path: 'packages/core/package.json' },
       ];
-      packages.forEach(pkg => console.log(`✅ Found package: ${pkg.name}`));
+      console.log(`✨ Found ${packages.length} packages in repository`);
       return {
         total_count: packages.length,
         incomplete_results: false,
@@ -223,8 +224,12 @@ export const mockData = {
       };
     }
 
-    // Handle search for dependents of @semaphore-protocol/proof
-    if (query.includes('"@semaphore-protocol/proof": filename:package.json')) {
+    // Handle search for dependents of specific packages
+    if (query.includes('": filename:package.json')) {
+      const packageName = query.split('"')[1];
+      console.log(`\n📊 Analyzing dependencies for ${packageName}`);
+      console.log('🔍 Searching GitHub for dependent projects...');
+      
       const dependents = [
         { name: 'anonkarma', description: 'zk Identity Provider', isActive: false, lastCommit: '2024-03-27' },
         { name: 'auto-contracts-hardhat', description: 'Contracts-hardhat template created via Semaphore-cli for Auto', isActive: false, lastCommit: '2024-01-05' },
@@ -314,6 +319,30 @@ export const mockData = {
         { name: 'zuAstro', description: 'Hack Zuzalu Istanbul project', isActive: false, lastCommit: '2023-11-11' },
         { name: 'zupass', description: 'Zuzalu Passport', isActive: true, lastCommit: '2025-04-14' }
       ];
+
+      // Log dependency analysis details
+      const activeCount = dependents.filter(d => d.isActive).length;
+      const inactiveCount = dependents.length - activeCount;
+      
+      console.log('\n📈 Dependency Analysis Results:');
+      console.log(`├─ Total Dependent Projects: ${dependents.length}`);
+      console.log(`├─ Active Projects: ${activeCount}`);
+      console.log(`└─ Inactive Projects: ${inactiveCount}`);
+      
+      // Group projects by last update timeframe
+      const now = new Date();
+      const oneMonthAgo = new Date(now.setMonth(now.getMonth() - 1));
+      const threeMonthsAgo = new Date(now.setMonth(now.getMonth() - 2));
+      const sixMonthsAgo = new Date(now.setMonth(now.getMonth() - 3));
+      
+      const updatedLastMonth = dependents.filter(d => new Date(d.lastCommit) > oneMonthAgo).length;
+      const updatedLastThreeMonths = dependents.filter(d => new Date(d.lastCommit) > threeMonthsAgo).length;
+      const updatedLastSixMonths = dependents.filter(d => new Date(d.lastCommit) > sixMonthsAgo).length;
+      
+      console.log('\n📅 Update Frequency:');
+      console.log(`├─ Updated in last month: ${updatedLastMonth}`);
+      console.log(`├─ Updated in last 3 months: ${updatedLastThreeMonths}`);
+      console.log(`└─ Updated in last 6 months: ${updatedLastSixMonths}`);
 
       return {
         total_count: dependents.length,
