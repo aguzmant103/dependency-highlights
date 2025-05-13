@@ -98,22 +98,39 @@ export interface DependentRepository {
   isPrivate: boolean;
 }
 
+// Helper: Throttled batch fetch for repo metadata
+async function throttledMap<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  let i = 0;
+  async function next(): Promise<void> {
+    if (i >= items.length) return;
+    const idx = i++;
+    try {
+      results[idx] = await fn(items[idx]);
+    } catch {
+      results[idx] = undefined as unknown as R;
+    }
+    await next();
+  }
+  const runners = Array.from({ length: Math.min(limit, items.length) }, next);
+  await Promise.all(runners);
+  return results;
+}
+
 export async function findDependentRepositories(packageName: string): Promise<DependentRepository[]> {
   console.log(`\n🔍 Starting dependency discovery for package: ${packageName}`);
   try {
-    // Only search for the exact package name (scoped or unscoped)
     const searchQuery = `"${packageName}" in:file filename:package.json`;
     console.log(`├─ Executing GitHub search query: ${searchQuery}`);
     console.log('├─ Search terms:');
     console.log(`│  ├─ "${packageName}"`);
     console.log(`├─ Note: Searching for exact package references in any package.json file (paginated)`);
 
-    // Pagination loop
     let page = 1;
     const per_page = 100;
     let total_count = 0;
-    const dependentRepos: DependentRepository[] = [];
     const processedRepos = new Set<string>();
+    const repoInfos: { owner: string; repo: string; item: Record<string, unknown> }[] = [];
     let hasMore = true;
 
     while (hasMore) {
@@ -132,25 +149,81 @@ export async function findDependentRepositories(packageName: string): Promise<De
         const repoFullName = item.repository.full_name;
         if (processedRepos.has(repoFullName)) continue;
         processedRepos.add(repoFullName);
-        // Minimal info for now; you can expand this as needed
-        dependentRepos.push({
-          name: item.repository.name,
-          fullName: repoFullName,
-          description: typeof item.repository.description === 'string' ? item.repository.description : 'No description available',
-          url: item.repository.html_url,
-          lastUpdated: item.repository.updated_at ?? new Date().toISOString(),
-          stars: item.repository.stargazers_count ?? 0,
-          forks: item.repository.forks_count ?? 0,
-          dependencyType: 'dependency',
-          dependencyVersion: 'unknown',
-          isWorkspace: false,
-          isPrivate: item.repository.private
-        });
+        const [owner, repo] = repoFullName.split('/');
+        repoInfos.push({ owner, repo, item });
       }
       hasMore = response.data.items.length === per_page;
       page++;
     }
-    console.log(`└─ ✅ Found ${dependentRepos.length} unique dependent repositories`);
+
+    // Fetch accurate repo metadata with throttling
+    const concurrencyLimit = 5;
+    const repoMetas = await throttledMap(repoInfos, concurrencyLimit, async ({ owner, repo, item }) => {
+      let meta;
+      let retry = 0;
+      while (retry < 3) {
+        try {
+          const { data } = await octokit.repos.get({ owner, repo });
+          meta = data;
+          break;
+        } catch (error: unknown) {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'status' in error &&
+            'message' in error &&
+            typeof (error as { message: unknown }).message === 'string' &&
+            typeof (error as { status: unknown }).status === 'number' &&
+            (error as { status: number }).status === 403 &&
+            (error as { message: string }).message.includes('rate limit')
+          ) {
+            const wait = 1000 * (retry + 1);
+            console.warn(`⚠️ Rate limit hit for ${owner}/${repo}, retrying in ${wait}ms...`);
+            await new Promise(res => setTimeout(res, wait));
+            retry++;
+          } else {
+            const msg = typeof error === 'object' && error && 'message' in error ? (error as { message: string }).message : String(error);
+            console.error(`❌ Failed to fetch metadata for ${owner}/${repo}:`, msg);
+            break;
+          }
+        }
+      }
+      return { item, meta };
+    });
+
+    const dependentRepos: DependentRepository[] = repoMetas.map(({ item, meta }) => {
+      if (!meta) {
+        // Type guard for item.repository
+        const repo = typeof item.repository === 'object' && item.repository !== null ? item.repository as Record<string, unknown> : {};
+        return {
+          name: typeof repo.name === 'string' ? repo.name : 'unknown',
+          fullName: typeof repo.full_name === 'string' ? repo.full_name : 'unknown/unknown',
+          description: typeof repo.description === 'string' ? repo.description : 'No description available',
+          url: typeof repo.html_url === 'string' ? repo.html_url : '',
+          lastUpdated: typeof repo.updated_at === 'string' ? repo.updated_at : new Date().toISOString(),
+          stars: typeof repo.stargazers_count === 'number' ? repo.stargazers_count : 0,
+          forks: typeof repo.forks_count === 'number' ? repo.forks_count : 0,
+          dependencyType: 'dependency',
+          dependencyVersion: 'unknown',
+          isWorkspace: false,
+          isPrivate: typeof repo.private === 'boolean' ? repo.private : false
+        };
+      }
+      return {
+        name: meta.name,
+        fullName: meta.full_name,
+        description: typeof meta.description === 'string' ? meta.description : 'No description available',
+        url: meta.html_url,
+        lastUpdated: meta.updated_at ?? new Date().toISOString(),
+        stars: meta.stargazers_count ?? 0,
+        forks: meta.forks_count ?? 0,
+        dependencyType: 'dependency',
+        dependencyVersion: 'unknown',
+        isWorkspace: false,
+        isPrivate: meta.private
+      };
+    });
+    console.log(`└─ ✅ Found ${dependentRepos.length} unique dependent repositories with accurate metadata`);
     return dependentRepos;
   } catch (error) {
     console.error('❌ Error during dependency discovery:', error);
