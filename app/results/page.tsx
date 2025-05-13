@@ -13,8 +13,28 @@ interface PageProps {
 
 export default async function ResultsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = await searchParams;
-  const owner = typeof resolvedSearchParams.owner === "string" ? resolvedSearchParams.owner : "";
-  const repo = typeof resolvedSearchParams.repo === "string" ? resolvedSearchParams.repo : "";
+  const owner = resolvedSearchParams.owner || "";
+  const repo = resolvedSearchParams.repo || "";
+
+  // Add validation logging
+  console.log('\n[ResultsPage] 🔄 Rendering with params:', {
+    rawParams: resolvedSearchParams,
+    processedParams: { owner, repo },
+    validation: {
+      hasOwner: Boolean(owner),
+      hasRepo: Boolean(repo),
+      ownerType: typeof owner,
+      repoType: typeof repo
+    }
+  });
+
+  // Validate required parameters
+  if (!owner || !repo) {
+    console.error('[ResultsPage] ❌ Missing required parameters:', {
+      owner: { value: owner, type: typeof owner },
+      repo: { value: repo, type: typeof repo }
+    });
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">

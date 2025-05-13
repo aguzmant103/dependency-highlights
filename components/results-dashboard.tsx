@@ -19,12 +19,33 @@ interface DependentRepository {
 
 interface ResultsDashboardProps {
   selectedPackages: string[];
+  owner: string;
+  repo: string;
 }
 
-export function ResultsDashboard({ selectedPackages }: ResultsDashboardProps): JSX.Element {
+export function ResultsDashboard({ selectedPackages, owner, repo }: ResultsDashboardProps): JSX.Element {
   const [projects, setProjects] = useState<DependentRepository[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Add debug logging for props
+  console.log('\n[ResultsDashboard] 🔄 Component rendered with props:', {
+    owner,
+    repo,
+    selectedPackages,
+    hasOwner: Boolean(owner),
+    hasRepo: Boolean(repo),
+    ownerType: typeof owner,
+    repoType: typeof repo,
+    selectedPackagesType: typeof selectedPackages,
+    selectedPackagesLength: selectedPackages?.length,
+    selectedPackagesContent: selectedPackages,
+    propsValidation: {
+      ownerValid: typeof owner === 'string' && owner.length > 0,
+      repoValid: typeof repo === 'string' && repo.length > 0,
+      packagesValid: Array.isArray(selectedPackages) && selectedPackages.length > 0
+    }
+  });
 
   useEffect(() => {
     async function loadProjects() {
@@ -33,7 +54,23 @@ export function ResultsDashboard({ selectedPackages }: ResultsDashboardProps): J
         setError(null);
         
         console.log('\n[ResultsDashboard] 🔍 Starting dependency discovery');
-        console.log(`[ResultsDashboard] ├─ Selected packages: ${selectedPackages.join(', ')}`);
+        console.log(`[ResultsDashboard] ├─ Initial props:`, { 
+          owner, 
+          repo, 
+          selectedPackages,
+          ownerType: typeof owner,
+          repoType: typeof repo,
+          packagesType: typeof selectedPackages
+        });
+
+        // Validate required props
+        if (!owner || !repo) {
+          const error = `Missing required props: ${!owner ? 'owner' : ''} ${!repo ? 'repo' : ''}`.trim();
+          console.error(`[ResultsDashboard] ❌ ${error}`);
+          setError(error);
+          setIsLoading(false);
+          return;
+        }
         
         // Fetch dependencies for each selected package
         const allDependencies: DependentRepository[] = [];
@@ -42,10 +79,45 @@ export function ResultsDashboard({ selectedPackages }: ResultsDashboardProps): J
         for (const pkg of selectedPackages) {
           console.log(`\n[ResultsDashboard] ├─ Processing package: ${pkg}`);
           
+          // Construct URL with all required parameters
+          const urlParams = new URLSearchParams();
+          urlParams.append('owner', owner);
+          urlParams.append('repo', repo);
+          urlParams.append('package', pkg);
+          
+          const url = `/api/github-packages?${urlParams.toString()}`;
+          
+          console.log(`[ResultsDashboard] ├─ Request details:`, {
+            owner,
+            repo,
+            package: pkg,
+            url,
+            params: Object.fromEntries(urlParams.entries()),
+            validation: {
+              ownerValid: Boolean(owner),
+              repoValid: Boolean(repo),
+              packageValid: Boolean(pkg),
+              urlValid: url.includes(owner) && url.includes(repo)
+            }
+          });
+          
+          // Skip request if required parameters are missing
+          if (!owner || !repo) {
+            console.error(`[ResultsDashboard] ├─ ❌ Skipping request - missing required parameters:`, {
+              hasOwner: Boolean(owner),
+              hasRepo: Boolean(repo),
+              hasPackage: Boolean(pkg)
+            });
+            continue;
+          }
+          
           try {
-            const response = await fetch(`/api/github-packages?package=${encodeURIComponent(pkg)}`);
+            const response = await fetch(url);
+            console.log(`[ResultsDashboard] ├─ Response status: ${response.status}`);
+            
             if (!response.ok) {
               const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+              console.error(`[ResultsDashboard] ├─ Error response:`, errorData);
               throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
             
@@ -100,7 +172,7 @@ export function ResultsDashboard({ selectedPackages }: ResultsDashboardProps): J
       setIsLoading(false);
       setProjects([]);
     }
-  }, [selectedPackages]);
+  }, [selectedPackages, owner, repo]);
 
   if (isLoading) {
     return (

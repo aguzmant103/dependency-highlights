@@ -14,11 +14,22 @@ interface PackageSelectionWrapperProps {
 export function PackageSelectionWrapper({ owner, repo }: PackageSelectionWrapperProps) {
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
 
+  console.log('\n[PackageSelectionWrapper] 🔄 Rendering');
+  console.log('[PackageSelectionWrapper] ├─ Props:', { 
+    owner, 
+    repo,
+    hasOwner: Boolean(owner),
+    hasRepo: Boolean(repo)
+  });
+  console.log('[PackageSelectionWrapper] ├─ Selected packages:', selectedPackages);
+
   const handlePackageSelection = async (packages: string[]) => {
+    console.log('[PackageSelectionWrapper] ├─ Package selection:', packages);
     setSelectedPackages(packages);
   };
 
   if (selectedPackages.length === 0) {
+    console.log('[PackageSelectionWrapper] ├─ Rendering PackageSelection');
     return (
       <PackageSelection 
         owner={owner} 
@@ -28,6 +39,7 @@ export function PackageSelectionWrapper({ owner, repo }: PackageSelectionWrapper
     );
   }
 
+  console.log('[PackageSelectionWrapper] ├─ Rendering ResultsDashboard');
   return (
     <>
       <Stepper step={2} />
@@ -38,7 +50,7 @@ export function PackageSelectionWrapper({ owner, repo }: PackageSelectionWrapper
           <Badge key={pkg} variant="outline" className="bg-solv-purple/10 text-solv-lightPurple border-solv-purple/20">{pkg}</Badge>
         ))}
       </div>
-      <ResultsDashboard selectedPackages={selectedPackages} />
+      <ResultsDashboard selectedPackages={selectedPackages} owner={owner} repo={repo} />
     </>
   );
 } 

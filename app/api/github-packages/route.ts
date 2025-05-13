@@ -32,20 +32,61 @@ export async function POST(req: NextRequest) {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const owner = searchParams.get("owner");
+  const repo = searchParams.get("repo");
   const packageName = searchParams.get("package");
 
-  if (!packageName) {
+  console.log('\n[/api/github-packages] 📥 Received GET request');
+  console.log('[/api/github-packages] ├─ Request details:', {
+    url: request.url,
+    method: request.method,
+    headers: Object.fromEntries(request.headers.entries())
+  });
+  console.log('[/api/github-packages] ├─ Search params:', {
+    owner,
+    repo,
+    package: packageName,
+    ownerType: typeof owner,
+    repoType: typeof repo,
+    packageType: typeof packageName,
+    hasOwner: Boolean(owner),
+    hasRepo: Boolean(repo),
+    hasPackage: Boolean(packageName),
+    rawParams: Object.fromEntries(searchParams.entries())
+  });
+
+  if (!owner || !repo || !packageName) {
+    console.log('[/api/github-packages] ├─ ❌ Missing required parameters');
+    console.log('[/api/github-packages] ├─ Parameter validation:', {
+      owner: {
+        value: owner,
+        type: typeof owner,
+        valid: Boolean(owner)
+      },
+      repo: {
+        value: repo,
+        type: typeof repo,
+        valid: Boolean(repo)
+      },
+      package: {
+        value: packageName,
+        type: typeof packageName,
+        valid: Boolean(packageName)
+      }
+    });
     return NextResponse.json(
-      { error: "Missing required parameter: package" },
+      { error: "Missing required parameters: owner, repo, and package" },
       { status: 400 }
     );
   }
 
+  const fullPackageName = `@${owner}/${packageName}`;
+
   try {
     console.log('\n[/api/github-packages] 📥 Received dependency discovery request');
-    console.log(`[/api/github-packages] ├─ Package: ${packageName}`);
+    console.log(`[/api/github-packages] ├─ Package: ${fullPackageName}`);
     
-    const dependentRepos = await findDependentRepositories(packageName);
+    const dependentRepos = await findDependentRepositories(fullPackageName);
     
     console.log(`[/api/github-packages] └─ ✅ Successfully found ${dependentRepos.length} dependent repositories`);
     

@@ -13,6 +13,28 @@ interface ResultsClientProps {
 }
 
 export function ResultsClient({ owner, repo }: ResultsClientProps) {
+  console.log('\n[ResultsClient] 🔄 Rendering');
+  console.log('[ResultsClient] ├─ Props:', { 
+    owner, 
+    repo,
+    hasOwner: Boolean(owner),
+    hasRepo: Boolean(repo),
+    ownerType: typeof owner,
+    repoType: typeof repo,
+    validation: {
+      ownerValid: typeof owner === 'string' && owner.length > 0,
+      repoValid: typeof repo === 'string' && repo.length > 0
+    }
+  });
+
+  // Validate required props
+  if (!owner || !repo) {
+    console.error('[ResultsClient] ❌ Missing required props:', {
+      owner: { value: owner, type: typeof owner },
+      repo: { value: repo, type: typeof repo }
+    });
+  }
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
 
@@ -59,7 +81,7 @@ export function ResultsClient({ owner, repo }: ResultsClientProps) {
           <Badge key={pkg} variant="outline" className="bg-solv-purple/10 text-solv-lightPurple border-solv-purple/20">{pkg}</Badge>
         ))}
       </div>
-      <ResultsDashboard selectedPackages={selectedPackages} />
+      <ResultsDashboard selectedPackages={selectedPackages} owner={owner} repo={repo} />
     </>
   );
 } 
